@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Code Tester - WASM</title>
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.20.0/full/pyodide.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🐍 Python Code Tester with WASM</h1>
+        
+        <div class="section">
+            <h2>Python Code</h2>
+            <textarea id="code-editor">
+# Use the name "solution"
+def solution(n):
+    orig = n
+    nums = []
+    for _ in range(100_000):
+        n = _
+        nums.append(n)
+    return orig * 2</textarea>
+        </div>
+        
+        <div class="section">
+            <h2>Test Cases</h2>
+            <p>Select a problem to load predefined test cases.</p>
+            <select id="test-case-selector" onchange="handleTestCaseChange()">
+                <option value="1">Problem 1</option>
+                <option value="2">Problem 2</option>
+            </select>
+            <div>
+                <div id="test-case-instructions"></div>
+            </div>
+
+            <div id="test-cases">
+                <!-- Test cases will be dynamically added here -->
+            </div>
+        </div>
+        
+        <div class="section">
+            <button id="run-btn" onclick="runTests()">🚀 Run Tests</button>
+            <button onclick="clearResults()">🗑️ Clear Results</button>
+        </div>
+        
+        <div class="section">
+            <h2>Results</h2>
+            <div id="results"></div>
+        </div>
+    </div>
+
+    <script>
+        let pyodide = null;
+        let testCaseCounter = 0;
+
+        async function initializePyodide() {
+            try {
+                pyodide = await loadPyodide({
+                    indexURL: "https://cdn.jsdelivr.net/pyodide/v0.20.0/full/"
+                });
+                
+                // Install any required packages
+                await pyodide.loadPackage(['numpy', 'micropip']);
+                
+                document.getElementById('results').textContent = '✅ Pyodide initialized successfully! Ready to run tests.';
+            } catch (error) {
+                document.getElementById('results').textContent = `❌ Failed to initialize Pyodide: ${error}`;
+            }
+        }
+        
+        function clearTests() {
+            const testCasesDiv = document.getElementById('test-cases');
+            testCasesDiv.innerHTML = '';
+            testCaseCounter = 0;
+        }
+
+        function handleTestCaseChange() {
+            clearTests();
+            const selector = document.getElementById('test-case-selector');
+            const instructionsDiv = document.getElementById('test-case-instructions');
+            const selectedProblem = selector.value;
+            
+            // Add problem-specific test cases here
+            if (selectedProblem === '1') {
+                instructionsDiv.innerHTML = '<p>What is the maximum sum of elements in a sequence?</p>';
+                addTestCase('1,2,3,-4,-5,6,7', '13'); 
+                addTestCase('1,2,3,4,-4,-5,6,7',  '14'); 
+            } else if (selectedProblem === '2') {
+                instructionsDiv.innerHTML = '<p>How many variants of getting certain number by summing two different numbers in ordered sequence?</p>';
+                addTestCase('3,[0,1,2,3]', '2'); 
+                addTestCase('4,[0,4,5,6]', '1'); 
+                addTestCase('11,[1,2,3,4,5,5,6,10]', '3'); 
+            }
+        }
+
+        function addTestCase(givenInput, expectedOutput) {
+            testCaseCounter++;
+            const testCasesDiv = document.getElementById('test-cases');
+            
+            const testCaseDiv = document.createElement('div');
+            testCaseDiv.className = 'test-case';
+            testCaseDiv.id = `test-case-${testCaseCounter}`;
+            
+
+            testCaseDiv.innerHTML = `
+                <h3>Test Case ${testCaseCounter}</h3>
+                <div class="input-output-row">
+                    <div>
+                        <label>Input (String format):</label>
+                        <textarea disabled=True>${givenInput}</textarea>
+                    </div>
+                    <div>
+                        <label>Expected Output:</label>
+                        <textarea disabled=True>${expectedOutput}</textarea>
+                    </div>
+                </div>
+            `;
+            
+            testCasesDiv.appendChild(testCaseDiv);
+        }
+
+        function clearResults() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+            resultsDiv.textContent = '';
+            console.log('Results cleared.');
+        }
+
+        async function runTests() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+            resultsDiv.textContent = '';
+            
+            const runBtn = document.getElementById('run-btn');
+            
+            if (!pyodide) {
+                resultsDiv.innerHTML = '<div class="status error">❌ Pyodide not initialized yet. Please wait...</div>';
+                return;
+            }
+            
+            runBtn.disabled = true;
+            resultsDiv.innerHTML = `
+                <div class="loading-container">
+                    <div class="spinner"></div>
+                    <div class="loading-text">🔄 Running tests...</div>
+                </div>
+            `;
+            
+            // Use a short timeout to allow the UI to update before heavy processing
+            await new Promise(resolve => setTimeout(resolve, 50));
+
+            const code = document.getElementById('code-editor').value.trim();
+            
+            if (!code) {
+                resultsDiv.innerHTML = '<div class="status error">❌ Please enter some Python code to test.</div>';
+                runBtn.disabled = false;
+                return;
+            }
+            
+            const testCases = collectTestCases();
+            
+            try {
+                let results = [];
+                let totalTime = 0;
+                let passedTests = 0;
+                let failedTests = 0;
+                
+                // Prepare the code execution environment with improved benchmarking
+                pyodide.runPython(`
+import sys
+import time
+import traceback
+import json
+import gc
+from io import StringIO
+
+def robust_benchmark(func, input_data, num_runs=100, warmup_runs=10):
+    """
+    Perform robust benchmarking with:
+    - Warm-up runs to stabilize JIT/caching
+    - Multiple measurements
+    - Outlier removal using IQR method
+    - Statistical analysis
+    """
+    # Prepare function arguments once
+    if isinstance(input_data, list):
+        args = input_data
+        kwargs = {}
+    elif isinstance(input_data, dict):
+        args = []
+        kwargs = input_data
+    else:
+        args = [input_data]
+        kwargs = {}
+    
+    # Warm-up phase - let JIT and caching stabilize
+    for _ in range(warmup_runs):
+        try:
+            if kwargs:
+                _ = func(**kwargs)
+            else:
+                _ = func(*args)
+        except:
+            pass
+    
+    # Force garbage collection before measurement
+    gc.collect()
+    
+    # Measurement phase
+    times = []
+    result = None
+    
+    for _ in range(num_runs):
+        start = time.perf_counter()
+        if kwargs:
+            result = func(**kwargs)
+        else:
+            result = func(*args)
+        end = time.perf_counter()
+        times.append(end - start)
+    
+    # Remove outliers using IQR method
+    times_sorted = sorted(times)
+    n = len(times_sorted)
+    q1_idx = n // 4
+    q3_idx = 3 * n // 4
+    q1 = times_sorted[q1_idx]
+    q3 = times_sorted[q3_idx]
+    iqr = q3 - q1
+    lower_bound = q1 - 1.5 * iqr
+    upper_bound = q3 + 1.5 * iqr
+    
+    # Filter outliers
+    filtered_times = [t for t in times if lower_bound <= t <= upper_bound]
+    
+    # If too many outliers removed, use all data
+    if len(filtered_times) < num_runs * 0.5:
+        filtered_times = times
+    
+    # Calculate statistics
+    mean_time = sum(filtered_times) / len(filtered_times)
+    median_time = times_sorted[len(times_sorted) // 2]
+    min_time = min(filtered_times)
+    max_time = max(filtered_times)
+    
+    # Standard deviation
+    variance = sum((t - mean_time) ** 2 for t in filtered_times) / len(filtered_times)
+    std_dev = variance ** 0.5
+    
+    # Coefficient of variation (lower is more consistent)
+    cv = (std_dev / mean_time * 100) if mean_time > 0 else 0
+    
+    return {
+        'result': result,
+        'mean_time': mean_time,
+        'median_time': median_time,
+        'min_time': min_time,
+        'max_time': max_time,
+        'std_dev': std_dev,
+        'cv_percent': cv,
+        'num_runs': num_runs,
+        'num_valid': len(filtered_times),
+        'outliers_removed': num_runs - len(filtered_times)
+    }
+
+def measure_memory_usage(func, input_data, num_samples=10):
+    """
+    Measure memory using multiple samples - tracking peak allocations
+    """
+    # Prepare arguments
+    if isinstance(input_data, list):
+        args = input_data
+        kwargs = {}
+    elif isinstance(input_data, dict):
+        args = []
+        kwargs = input_data
+    else:
+        args = [input_data]
+        kwargs = {}
+    
+    memory_measurements = []
+    
+    for _ in range(num_samples):
+        # Force garbage collection and measure baseline
+        gc.collect()
+        gc.collect()
+        
+        # Get baseline object count and sizes
+        objects_before = gc.get_objects()
+        count_before = len(objects_before)
+        
+        # Calculate approximate size of current objects
+        size_before = 0
+        try:
+            for obj in objects_before[:1000]:  # Sample first 1000 objects to avoid slowdown
+                try:
+                    size_before += sys.getsizeof(obj)
+                except:
+                    pass
+        except:
+            pass
+        
+        # Execute function
+        if kwargs:
+            result = func(**kwargs)
+        else:
+            result = func(*args)
+        
+        # Measure after execution (before GC)
+        objects_after = gc.get_objects()
+        count_after = len(objects_after)
+        
+        # Calculate approximate size after
+        size_after = 0
+        try:
+            for obj in objects_after[:1000]:
+                try:
+                    size_after += sys.getsizeof(obj)
+                except:
+                    pass
+        except:
+            pass
+        
+        # Try to measure the result object itself
+        result_size = 0
+        try:
+            result_size = sys.getsizeof(result)
+            # If result is a container, measure contents too
+            if hasattr(result, '__iter__') and not isinstance(result, (str, bytes)):
+                for item in list(result)[:100]:  # Sample first 100 items
+                    try:
+                        result_size += sys.getsizeof(item)
+                    except:
+                        pass
+        except:
+            pass
+        
+        # Calculate deltas
+        object_delta = count_after - count_before
+        size_delta = abs(size_after - size_before)
+        
+        memory_measurements.append({
+            'object_delta': object_delta,
+            'size_delta': size_delta,
+            'result_size': result_size,
+            'total_estimate': object_delta * 56 + size_delta + result_size  # 56 bytes per object overhead
+        })
+        
+        # Clean up for next iteration
+        del result
+        gc.collect()
+    
+    # Calculate statistics
+    object_deltas = [m['object_delta'] for m in memory_measurements]
+    size_deltas = [m['size_delta'] for m in memory_measurements]
+    result_sizes = [m['result_size'] for m in memory_measurements]
+    total_estimates = [m['total_estimate'] for m in memory_measurements]
+    
+    # Remove outliers from each metric
+    def remove_outliers(data):
+        if len(data) < 4:
+            return data
+        sorted_data = sorted(data)
+        n = len(sorted_data)
+        q1_idx = n // 4
+        q3_idx = 3 * n // 4
+        q1 = sorted_data[q1_idx]
+        q3 = sorted_data[q3_idx]
+        iqr = q3 - q1
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
+        filtered = [x for x in data if lower_bound <= x <= upper_bound]
+        return filtered if len(filtered) >= len(data) * 0.5 else data
+    
+    object_deltas = remove_outliers(object_deltas)
+    total_estimates = remove_outliers(total_estimates)
+    
+    return {
+        'mean_objects': sum(object_deltas) / len(object_deltas) if object_deltas else 0,
+        'median_objects': sorted(object_deltas)[len(object_deltas) // 2] if object_deltas else 0,
+        'min_objects': min(object_deltas) if object_deltas else 0,
+        'max_objects': max(object_deltas) if object_deltas else 0,
+        'mean_bytes': sum(total_estimates) / len(total_estimates) if total_estimates else 0,
+        'median_bytes': sorted(total_estimates)[len(total_estimates) // 2] if total_estimates else 0,
+        'result_size_bytes': sum(result_sizes) / len(result_sizes) if result_sizes else 0
+    }
+
+def run_test_function(code, input_data, num_runs=100, warmup_runs=10, memory_samples=10):
+    """
+    Run comprehensive test with robust benchmarking
+    """
+    # Create a clean namespace
+    namespace = {}
+    
+    # Execute the user code
+    exec(code, namespace)
+    
+    func = namespace.get('solution')
+    if not func:
+        raise Exception("No callable function found. Please define a function 'solution'")
+    
+    # Redirect stdout to capture prints
+    old_stdout = sys.stdout
+    sys.stdout = captured_output = StringIO()
+    
+    try:
+        # Run timing benchmark
+        timing_stats = robust_benchmark(func, input_data, num_runs, warmup_runs)
+        
+        # Run memory benchmark
+        memory_stats = measure_memory_usage(func, input_data, memory_samples)
+        
+        # Get any printed output
+        printed_output = captured_output.getvalue()
+        
+        return {
+            'success': True,
+            'result': timing_stats['result'],
+            'execution_time': timing_stats['mean_time'],
+            'median_time': timing_stats['median_time'],
+            'min_time': timing_stats['min_time'],
+            'max_time': timing_stats['max_time'],
+            'std_dev': timing_stats['std_dev'],
+            'cv_percent': timing_stats['cv_percent'],
+            'num_runs': timing_stats['num_runs'],
+            'outliers_removed': timing_stats['outliers_removed'],
+            'memory_objects': memory_stats['mean_objects'],
+            'memory_median': memory_stats['median_objects'],
+            'memory_bytes': memory_stats['mean_bytes'],
+            'memory_median_bytes': memory_stats['median_bytes'],
+            'result_size_bytes': memory_stats['result_size_bytes'],
+            'printed_output': printed_output.strip() if printed_output.strip() else None,
+            'error': None
+        }
+    except Exception as e:
+        return {
+            'success': False,
+            'result': None,
+            'execution_time': 0,
+            'median_time': 0,
+            'min_time': 0,
+            'max_time': 0,
+            'std_dev': 0,
+            'cv_percent': 0,
+            'num_runs': 0,
+            'outliers_removed': 0,
+            'memory_objects': 0,
+            'memory_median': 0,
+            'memory_bytes': 0,
+            'memory_median_bytes': 0,
+            'result_size_bytes': 0,
+            'printed_output': None,
+            'error': str(e) + '\\n' + traceback.format_exc()
+        }
+    finally:
+        sys.stdout = old_stdout
+                `);
+                
+                for (let i = 0; i < testCases.length; i++) {
+                    const testCase = testCases[i];
+                    
+                    try {
+                        // Parse input and expected output
+                        let inputData = testCase.input;
+                        let expectedOutput = testCase.expectedOutput;
+                        
+                        // Run the test
+                        pyodide.globals.set("user_code", code);
+                        pyodide.globals.set("test_input", inputData);
+                        
+                        const result = pyodide.runPython(`
+result_data = run_test_function(user_code, test_input)
+result_data
+                        `).toJs({dict_converter: Object.fromEntries});
+                        
+                        totalTime += result.execution_time;
+                        
+                        // Compare results
+                        const actualResult = result.result;
+                        let passed = false;
+                        
+                        if (typeof expectedOutput === 'object' && typeof actualResult === 'object') {
+                            passed = JSON.stringify(expectedOutput) === JSON.stringify(actualResult);
+                        } else {
+                            passed = expectedOutput == actualResult;
+                        }
+                        
+                        if (passed) {
+                            passedTests++;
+                        } else {
+                            failedTests++;
+                        }
+                        
+                        results.push({
+                            testNumber: i + 1,
+                            passed: passed,
+                            input: testCase.input,
+                            expected: testCase.expectedOutput,
+                            actual: actualResult,
+                            executionTime: result.execution_time,
+                            medianTime: result.median_time,
+                            minTime: result.min_time,
+                            maxTime: result.max_time,
+                            stdDev: result.std_dev,
+                            cvPercent: result.cv_percent,
+                            numRuns: result.num_runs,
+                            outliersRemoved: result.outliers_removed,
+                            memoryObjects: result.memory_objects,
+                            memoryMedian: result.memory_median,
+                            memoryBytes: result.memory_bytes,
+                            memoryMedianBytes: result.memory_median_bytes,
+                            resultSizeBytes: result.result_size_bytes,
+                            printedOutput: result.printed_output,
+                            error: result.error,
+                            success: result.success
+                        });
+                        
+                    } catch (error) {
+                        failedTests++;
+                        results.push({
+                            testNumber: i + 1,
+                            passed: false,
+                            input: testCase.input,
+                            expected: testCase.expectedOutput,
+                            actual: null,
+                            executionTime: 0,
+                            memoryDelta: 0,
+                            printedOutput: null,
+                            error: error.message,
+                            success: false
+                        });
+                    }
+                    
+                    // Display intermediate results
+                    displayResults(results, passedTests, failedTests, totalTime, false);
+                    // Allow UI to repaint
+                    await new Promise(resolve => setTimeout(resolve, 20));
+                }
+                
+                // Display final results
+                displayResults(results, passedTests, failedTests, totalTime, true);
+                
+            } catch (error) {
+                resultsDiv.innerHTML = `<div class="status error">❌ Error: ${error.message}</div>`;
+            } finally {
+                runBtn.disabled = false;
+            }
+        }
+
+        function collectTestCases() {
+            const testCases = [];
+            const testCaseElements = document.querySelectorAll('.test-case');
+            
+            testCaseElements.forEach((element, index) => {
+                const textareas = element.querySelectorAll('textarea');
+                if (textareas.length >= 2) {
+                    const input = textareas[0].value.trim();
+                    const expectedOutput = textareas[1].value.trim();
+                    
+                    if (input && expectedOutput) {
+                        testCases.push({
+                            input: input,
+                            expectedOutput: expectedOutput
+                        });
+                    }
+                }
+            });
+            
+            return testCases;
+        }
+
+        function displayResults(results, passedTests, failedTests, totalTime, isFinal) {
+            const resultsDiv = document.getElementById('results');
+            
+            let html = '';
+            
+            // Summary
+            const overallStatus = failedTests === 0 ? 'success' : 'error';
+            const statusIcon = failedTests === 0 ? '✅' : '❌';
+            
+            const summaryText = isFinal 
+                ? `Tests completed: ${passedTests} passed, ${failedTests} failed`
+                : `Running... ${passedTests} passed, ${failedTests} failed so far`;
+
+            html += `<div class="status ${overallStatus}">
+                ${statusIcon} ${summaryText}
+            </div>`;
+            
+            // Performance summary
+            html += `<div class="performance-stats">
+                📊 <strong>Performance Summary:</strong><br>
+                Total execution time: ${(totalTime * 1000).toFixed(2)}ms<br>
+                Average time per test: ${(totalTime > 0 ? (totalTime * 1000 / results.length) : 0).toFixed(2)}ms<br>
+                Average memory per test: ${results.reduce((sum, r) => sum + (r.memoryBytes || 0), 0) / results.length / 1024 .toFixed(2)} KB<br>
+                Tests run: ${results.length}
+            </div>`;
+            
+            // Individual test results
+            results.forEach((result, index) => {
+                const statusClass = result.passed ? 'pass' : 'fail';
+                const statusIcon = result.passed ? '✅' : '❌';
+                
+                html += `<div class="test-result ${statusClass}">
+                    <strong>${statusIcon} Test ${result.testNumber}</strong><br>
+                    <strong>Input:</strong> ${result.input}<br>
+                    <strong>Expected:</strong> ${result.expected}<br>
+                    <strong>Actual:</strong> ${result.actual !== null ? JSON.stringify(result.actual) : 'null'}<br>
+                    <br>
+                    <strong>⏱️ Timing Statistics (${result.numRuns || 100} runs):</strong><br>
+                    • Mean: ${(result.executionTime * 1000000).toFixed(2)}μs<br>
+                    • Median: ${(result.medianTime * 1000000).toFixed(2)}μs<br>
+                    • Min: ${(result.minTime * 1000000).toFixed(2)}μs<br>
+                    • Max: ${(result.maxTime * 1000000).toFixed(2)}μs<br>
+                    • Std Dev: ${(result.stdDev * 1000000).toFixed(2)}μs<br>
+                    • Consistency (CV): ${result.cvPercent ? result.cvPercent.toFixed(2) : '0.00'}% ${result.cvPercent < 5 ? '🟢 Excellent' : result.cvPercent < 15 ? '🟡 Good' : '🔴 Variable'}<br>
+                    ${result.outliersRemoved > 0 ? `• Outliers removed: ${result.outliersRemoved}<br>` : ''}
+                    <br>
+                    <strong>💾 Memory Statistics:</strong><br>
+                    • Mean object delta: ${result.memoryObjects || 0} objects<br>
+                    • Median object delta: ${result.memoryMedian || 0} objects<br>
+                    • Mean memory usage: ${(result.memoryBytes / 1024).toFixed(2)} KB<br>
+                    • Median memory usage: ${(result.memoryMedianBytes / 1024).toFixed(2)} KB<br>
+                    • Result size: ${(result.resultSizeBytes / 1024).toFixed(2)} KB<br>`;
+                
+                if (result.printedOutput) {
+                    html += `<br><strong>📝 Printed output:</strong><br><code>${result.printedOutput}</code><br>`;
+                }
+                
+                if (result.error) {
+                    html += `<br><strong>❌ Error:</strong><br><code>${result.error}</code>`;
+                }
+                
+                html += '</div>';
+            });
+            
+            if (!isFinal) {
+                html += `
+                    <div class="loading-container">
+                        <div class="spinner"></div>
+                        <div class="loading-text">🔄 Running tests...</div>
+                    </div>
+                `;
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+
+        // Initialize on page load
+        window.addEventListener('load', () => {
+            initializePyodide();
+            handleTestCaseChange();
+        });
+    </script>
+</body>
+</html>
