@@ -1,14 +1,10 @@
 body {
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    margin: 0;
-    padding: 20px;
-    background-color: #1e1e1e;
-    color: #d4d4d4;
 }
 
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
+.container-fluid {
+    background-color: #2d2d2d;
+    color: whitesmoke;
 }
 
 h1 {
@@ -18,10 +14,8 @@ h1 {
 }
 
 .section {
-    background-color: #2d2d2d;
     border-radius: 8px;
     padding: 20px;
-    margin-bottom: 20px;
     border: 1px solid #3c3c3c;
 }
 
@@ -40,6 +34,7 @@ h1 {
     padding: 8px;
     font-size: 25px;
     margin-top: 10px;
+    margin-bottom: 10px;
 }
 
 textarea, input {
@@ -60,7 +55,8 @@ textarea:focus, input:focus {
 }
 
 #code-editor {
-    height: 300px;
+    width: 100%;
+    height: 1000px;
     resize: vertical;
 }
 
@@ -139,7 +135,7 @@ button:disabled {
     background-color: #ef5350;
 }
 
-#results {
+.boxed-output {
     background-color: #1e1e1e;
     border: 1px solid #3c3c3c;
     border-radius: 4px;
@@ -202,7 +198,7 @@ button:disabled {
     width: 40px;
     height: 40px;
     animation: spin 1s linear infinite;
-    margin: 20px auto;
+    margin: 10px auto;
 }
 
 @keyframes spin {
@@ -212,11 +208,10 @@ button:disabled {
 
 .loading-container {
     text-align: center;
-    padding: 20px;
+    padding: 2px;
 }
 
 .loading-text {
     color: #4fc3f7;
-    margin-top: 10px;
     font-weight: bold;
 }
