@@ -1,0 +1,7 @@
+{
+    "python.analysis.extraPaths": [
+        "./python/backend/.venv/lib/python3.13/site-packages",
+        "./python/frontend/.venv/lib/python3.13/site-packages",
+        "./python/shared_lib/.venv/lib/python3.13/site-packages"
+    ]
+}

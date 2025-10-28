@@ -1,0 +1,14 @@
+[project]
+name = "algorithms-tester"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.120.0",
+    "nicegui>=3.1.0",
+    "shared-lib",
+]
+
+[tool.uv.sources]
+shared-lib = { path = "../shared_lib", editable = true }
